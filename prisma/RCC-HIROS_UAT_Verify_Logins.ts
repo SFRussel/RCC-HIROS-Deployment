@@ -13,6 +13,10 @@ async function main() {
     select: { email: true, passwordHash: true, active: true },
   });
   for (const r of rows) {
+    if (!r.passwordHash) {
+      console.log("FAIL", r.email, "active=" + r.active, "(no password hash set)");
+      continue;
+    }
     const ok = await compare("RCC2026!", r.passwordHash);
     console.log(ok ? "PASS" : "FAIL", r.email, "active=" + r.active);
   }
