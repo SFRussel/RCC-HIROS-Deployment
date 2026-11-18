@@ -1,0 +1,210 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { requireAnyPermission, requirePermission } from "@/lib/auth-token";
+import { canFillFpas } from "@/lib/fpas";
+import { parsePagination, pageMeta } from "@/lib/pagination";
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/fpas — list submissions
+//   ?employeeId=X — filter by employee
+//   ?schoolYear=X — filter by school year
+// View scope: fpas.manage sees all; everyone else sees only their
+// own submissions. fpas.manage grants no filling for others.
+// ═══════════════════════════════════════════════════════════════
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireAnyPermission(request, [
+      "fpas.fill",
+      "fpas.manage",
+    ]);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
+
+    const { searchParams } = new URL(request.url);
+    const employeeId = searchParams.get("employeeId") || undefined;
+    const schoolYear = searchParams.get("schoolYear") || undefined;
+    const pagination = parsePagination(searchParams);
+
+    const canManage = user.isSystem || user.permissions.includes("fpas.manage");
+
+    const where: Record<string, unknown> = {};
+
+    if (employeeId) {
+      // Non-managers may only query themselves.
+      if (!canManage && employeeId !== user.id) {
+        return NextResponse.json(
+          { error: "Forbidden - you may only view your own submissions" },
+          { status: 403 }
+        );
+      }
+      where.employeeId = employeeId;
+    } else if (!canManage) {
+      // Everyone else sees only their own submissions.
+      where.employeeId = user.id;
+    }
+
+    if (schoolYear) {
+      where.schoolYear = schoolYear;
+    }
+
+    // List shape trims the large formData blob (detail comes from
+    // GET /api/fpas/[id]); full rows stay available to the export hub
+    // via per-submission fetches.
+    const listSelect = {
+      id: true,
+      employeeId: true,
+      schoolYear: true,
+      totalPoints: true,
+      createdAt: true,
+      updatedAt: true,
+      employee: {
+        select: {
+          id: true,
+          employeeId: true,
+          firstName: true,
+          lastName: true,
+          middleName: true,
+          group: { select: { id: true, name: true, code: true } },
+          role: { select: { id: true, name: true, isSystem: true } },
+        },
+      },
+    };
+
+    const [submissions, total] = await Promise.all([
+      db.fpasSubmission.findMany({
+        where,
+        select: listSelect,
+        orderBy: { updatedAt: "desc" },
+        take: pagination.take,
+        skip: pagination.skip,
+      }),
+      db.fpasSubmission.count({ where }),
+    ]);
+
+    // Filter out system admin submissions for non-system-admin users
+    const filteredSubmissions = user.isSystem ? submissions : submissions.filter(s => !s.employee?.role?.isSystem);
+
+    return NextResponse.json({ ...pageMeta(total, pagination), submissions: filteredSubmissions });
+  } catch (error) {
+    console.error("[API /fpas] Error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/fpas — create or update a submission (upsert)
+// Requires fpas.fill; filling for another employee requires
+// fpas.manage. Self-fills are additionally blocked when the
+// target's group is not in the enabled list (managers bypass;
+// empty list = all groups enabled).
+// ═══════════════════════════════════════════════════════════════
+export async function POST(request: NextRequest) {
+  try {
+    const auth = await requirePermission(request, "fpas.fill");
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
+
+    const body = await request.json();
+    const { employeeId, schoolYear, formData, totalPoints } = body as {
+      employeeId?: string;
+      schoolYear?: string;
+      formData?: string;
+      totalPoints?: number;
+    };
+
+    if (!schoolYear || !formData) {
+      return NextResponse.json(
+        { error: "schoolYear and formData are required" },
+        { status: 400 }
+      );
+    }
+
+    // Determine which employee this submission is for
+    const targetEmployeeId = employeeId || user.id;
+
+    // Nobody files for anyone else: the target must be yourself,
+    // managers included.
+    if (targetEmployeeId !== user.id) {
+      return NextResponse.json(
+        { error: "Forbidden - you may only file your own submission" },
+        { status: 403 }
+      );
+    }
+
+    // Managers bypass the group gate below for their own fills.
+    const canManage = user.isSystem || user.permissions.includes("fpas.manage");
+
+    // Verify the target employee exists
+    const targetEmployee = await db.employee.findUnique({
+      where: { id: targetEmployeeId },
+      select: { id: true, active: true, groupId: true },
+    });
+    if (!targetEmployee || !targetEmployee.active) {
+      return NextResponse.json(
+        { error: "Employee not found or inactive" },
+        { status: 404 }
+      );
+    }
+
+    // Hard gate: FPAS must be enabled for the target's department.
+    // Managers bypass; an empty enabled list means all groups are enabled.
+    // (Rule lives in @/lib/fpas — canFillFpas.)
+    {
+      const setting = await db.systemSetting.findUnique({
+        where: { key: "fpas_enabled_groups" },
+      });
+      let enabledGroupIds: string[] = [];
+      if (setting?.value) {
+        try { enabledGroupIds = JSON.parse(setting.value); } catch { enabledGroupIds = []; }
+      }
+      if (
+        !canFillFpas({
+          groupId: targetEmployee.groupId,
+          enabledGroupIds,
+          bypass: canManage,
+        })
+      ) {
+        return NextResponse.json(
+          { error: "Forbidden - FPAS is not enabled for this department" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Upsert: one submission per employee per school year
+    const existing = await db.fpasSubmission.findUnique({
+      where: { employeeId_schoolYear: { employeeId: targetEmployeeId, schoolYear } },
+    });
+
+    let submission;
+    if (existing) {
+      submission = await db.fpasSubmission.update({
+        where: { id: existing.id },
+        data: {
+          formData,
+          totalPoints: totalPoints ?? 0,
+        },
+      });
+    } else {
+      submission = await db.fpasSubmission.create({
+        data: {
+          employeeId: targetEmployeeId,
+          schoolYear,
+          formData,
+          totalPoints: totalPoints ?? 0,
+        },
+      });
+    }
+
+    return NextResponse.json({ submission });
+  } catch (error) {
+    console.error("[API /fpas] Error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
