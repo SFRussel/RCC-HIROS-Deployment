@@ -136,13 +136,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Host is Windows: all run steps use Windows PowerShell
       - name: Restore host environment file
-        run: cp "$HOME/rcc-hiros-deploy/.env.production" .env.production
+        shell: powershell
+        run: Copy-Item "$env:USERPROFILE\rcc-hiros-deploy\.env.production" .env.production
 
       - name: Log in to GHCR
+        shell: powershell
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Pull images
         run: |
@@ -158,16 +160,18 @@ jobs:
         run: docker compose --env-file .env.production --profile tunnel up -d --remove-orphans app cloudflared
 
       - name: Smoke test
+        shell: powershell
         run: |
-          for attempt in $(seq 1 20); do
-            if curl -fsS "$PUBLIC_URL/api/health" > /dev/null; then
-              echo "Health check passed at $PUBLIC_URL"
+          for ($i = 1; $i -le 20; $i++) {
+            curl.exe -fsS "$env:PUBLIC_URL/api/health" > $null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Health check passed at $env:PUBLIC_URL"
               exit 0
-            fi
-            echo "Attempt $attempt failed, retrying in 3s..."
-            sleep 3
-          done
-          echo "Health check failed — recent app logs:"
+            }
+            Write-Host "Attempt $i failed, retrying in 3s..."
+            Start-Sleep -Seconds 3
+          }
+          Write-Host "Health check failed - recent app logs:"
           docker compose --env-file .env.production logs --tail=80 app
           exit 1
 
@@ -176,11 +180,15 @@ jobs:
       # this pin, compose falls back to the `:latest` default in the compose
       # file and can silently start an older local image.
       - name: Pin deployed image in host environment
+        shell: powershell
         run: |
-          sed -i '/^APP_IMAGE=/d;/^MIGRATE_IMAGE=/d' .env.production
-          printf '\n# Pinned by the deploy job (%s)\nAPP_IMAGE=%s\nMIGRATE_IMAGE=%s\n' \
-            "$GITHUB_SHA" "$APP_IMAGE" "$MIGRATE_IMAGE" >> .env.production
-          cp .env.production "$HOME/rcc-hiros-deploy/.env.production"
+          (Get-Content .env.production) |
+            Where-Object { $_ -notmatch '^APP_IMAGE=' -and $_ -notmatch '^MIGRATE_IMAGE=' } |
+            Set-Content .env.production
+          Add-Content .env.production "`n# Pinned by the deploy job ($env:GITHUB_SHA)"
+          Add-Content .env.production "APP_IMAGE=$env:APP_IMAGE"
+          Add-Content .env.production "MIGRATE_IMAGE=$env:MIGRATE_IMAGE"
+          Copy-Item .env.production "$env:USERPROFILE\rcc-hiros-deploy\.env.production"
 
       - name: Prune dangling images
         run: docker image prune -f
