@@ -143,8 +143,10 @@ jobs:
 
       - name: Log in to GHCR
         shell: powershell
+        # --password-stdin corrupts long installation tokens under Windows
+        # PowerShell (CRLF on the pipe); -p is masked in logs and works.
         run: |
-          "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Pull images
         run: |
