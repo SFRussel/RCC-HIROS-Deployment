@@ -1112,7 +1112,7 @@ export function SubmitEvaluationPage() {
                             {[1, 2, 3, 4, 5].map((n) => (
                               <label
                                 key={n}
-                                className={`w-7 h-7 rounded-md border cursor-pointer flex items-center justify-center text-xs font-bold transition-colors ${
+                                className={`w-7 h-7 rounded-md border cursor-pointer flex items-center justify-center text-xs font-bold transition-colors relative ${
                                   scores[crit.id] === n
                                     ? "bg-rcc-primary text-rcc-primary-foreground border-rcc-primary"
                                     : "border-rcc-border text-rcc-text-secondary hover:bg-rcc-bg"
