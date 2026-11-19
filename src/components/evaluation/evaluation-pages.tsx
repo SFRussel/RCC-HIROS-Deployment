@@ -13,6 +13,7 @@ import {
   PaginationControls,
 } from "@/components/shared/table-pagination-v2";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { EvaluationFormsManager } from "@/components/evaluation/evaluation-form-manager";
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -91,17 +92,6 @@ interface EmployeeBrief {
 
 const inputClass =
   "w-full px-3 py-2 bg-rcc-bg border border-rcc-border rounded-md text-sm text-rcc-text-primary focus:outline-none focus:ring-2 focus:ring-rcc-accent/40";
-
-// 7 categories × 34 criteria total — real RCC Faculty Evaluation Tool
-const EVAL_CATEGORIES = [
-  "I. Communication Skills",
-  "II. Instructional Skills",
-  "III. Knowledge of the Subject-Matter",
-  "IV. Classroom Management",
-  "V. Professional Qualities",
-  "VI. Personal Qualities",
-  "VII. Classwork Design (For Online Classroom)",
-];
 
 // ═══════════════════════════════════════════════════════════════
 // EvaluationFormsPage — period management with group/role access
@@ -453,11 +443,12 @@ export function EvaluationFormsPage() {
           <Info className="h-5 w-5" />
         </div>
         <div className="text-sm">
-          <p className="font-semibold text-rcc-text-primary">RCC Faculty Evaluation Tool - 34 Criteria</p>
+          <p className="font-semibold text-rcc-text-primary">
+            RCC Faculty Evaluation Tool - {activeForm?.criteriaCount ?? 34} Criteria
+          </p>
           <p className="text-rcc-text-muted mt-1">
-            All evaluations use the official RCC faculty evaluation form across 7 categories:
-            <span className="text-rcc-text-secondary"> {EVAL_CATEGORIES.join(" · ")}</span>.
-            Each criterion is scored 1–5. Two textual evaluation fields are provided at the end.
+            Evaluations use the form attached to their period, scored 1–5 per criterion.
+            Two textual evaluation fields are provided at the end.
           </p>
           {activeForm && (
             <p className="text-xs text-rcc-text-muted mt-2">
@@ -466,6 +457,9 @@ export function EvaluationFormsPage() {
           )}
         </div>
       </div>
+
+      {/* Evaluation forms CRUD + export */}
+      <EvaluationFormsManager onChanged={load} />
 
       {/* Period cards */}
       {loading ? (

@@ -105,9 +105,10 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response;
 
     const body = await request.json();
-    const { name, criteria } = body as {
+    const { name, criteria, copyFrom } = body as {
       name?: string;
       criteria?: { category: string; description: string; maxScore?: number; weight?: number }[];
+      copyFrom?: string;
     };
 
     if (!name || !name.trim()) {
@@ -127,10 +128,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // A copy carries the source form's criteria; an explicit criteria array wins.
+    let template = DEFAULT_CRITERIA;
+    if (typeof copyFrom === "string" && copyFrom) {
+      const source = await db.evaluationForm.findUnique({
+        where: { id: copyFrom },
+        include: { criteria: { orderBy: { sortOrder: "asc" } } },
+      });
+      if (!source) {
+        return NextResponse.json({ error: "Source form not found" }, { status: 404 });
+      }
+      template = source.criteria.map((c) => ({
+        category: c.category,
+        description: c.description,
+        maxScore: c.maxScore,
+        weight: c.weight,
+      }));
+    }
+
     const useCriteria =
-      Array.isArray(criteria) && criteria.length > 0
-        ? criteria
-        : DEFAULT_CRITERIA;
+      Array.isArray(criteria) && criteria.length > 0 ? criteria : template;
 
     const form = await db.evaluationForm.create({
       data: {

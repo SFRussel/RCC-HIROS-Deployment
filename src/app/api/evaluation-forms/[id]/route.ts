@@ -87,6 +87,19 @@ export async function PATCH(
     };
 
     const data: Record<string, unknown> = {};
+    if (Array.isArray(criteria)) {
+      // Criteria rows are referenced by submitted responses; replacing them
+      // would either fail on the FK or destroy history. Force a duplicate.
+      const usedCount = await db.evaluation.count({ where: { formId: id } });
+      if (usedCount > 0) {
+        return NextResponse.json(
+          {
+            error: `This form already has ${usedCount} submitted evaluation(s). Duplicate it and edit the copy instead.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
     if (typeof name === "string" && name.trim() && name !== form.name) {
       const dup = await db.evaluationForm.findFirst({
         where: { name: name.trim().toLowerCase(), NOT: { id } },

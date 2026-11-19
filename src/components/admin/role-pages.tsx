@@ -103,6 +103,7 @@ const PERMISSION_LABELS: Record<string, { label: string; description: string }> 
   "evaluation.submit": { label: "Submit Evaluations", description: "Create and submit evaluation forms." },
   "evaluation.view_results": { label: "View Results (For Me)", description: "See evaluations written about self." },
   "evaluation.manage_forms": { label: "Manage Forms & Periods", description: "Create evaluation forms, periods, criteria." },
+  "evaluation.export_forms": { label: "Export Evaluation Forms", description: "Download evaluation forms (criteria and weights) as CSV." },
   "evaluation.reset": { label: "Reset Evaluations", description: "Reset evaluation submissions for a new period." },
 
   "leave.request": { label: "Request Leave", description: "Submit own leave requests." },
@@ -157,7 +158,7 @@ const PERMISSIONS_BY_MODULE: PermissionModule[] = [
   },
   {
     label: "Performance Evaluation",
-    permissions: ["evaluation.view", "evaluation.submit", "evaluation.view_results", "evaluation.manage_forms", "evaluation.reset"],
+    permissions: ["evaluation.view", "evaluation.submit", "evaluation.view_results", "evaluation.manage_forms", "evaluation.export_forms", "evaluation.reset"],
     scopes: [
       { key: "scopeAllEvaluation" as const, label: "All Evaluation", description: "View and submit evaluations institution-wide." },
     ],

@@ -44,6 +44,7 @@ export const PERMISSIONS = [
   "evaluation.submit",
   "evaluation.view_results",
   "evaluation.manage_forms",
+  "evaluation.export_forms",
   "evaluation.reset",
 
   // Leave management
@@ -143,6 +144,7 @@ export const MODULES: readonly ModuleDef[] = [
       "evaluation.submit",
       "evaluation.view_results",
       "evaluation.manage_forms",
+      "evaluation.export_forms",
     ],
   },
   {
@@ -193,6 +195,7 @@ export function getVisibleModules(permissions: string[]): ModuleDef[] {
         set.has("evaluation.submit") ||
         set.has("evaluation.view_results") ||
         set.has("evaluation.manage_forms") ||
+        set.has("evaluation.export_forms") ||
         set.has("evaluation.reset")
       );
     }
