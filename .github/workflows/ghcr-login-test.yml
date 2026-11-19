@@ -4,29 +4,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  ubuntu:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: login with GITHUB_TOKEN
-        run: |
-          echo "token length: ${#GHCR_TOKEN}"
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   windows:
     runs-on: [self-hosted, rcc-hiros]
     permissions:
       contents: read
       packages: read
     steps:
-      - name: login with GITHUB_TOKEN
+      - name: probe
         shell: powershell
         run: |
           $t = "${{ secrets.GITHUB_TOKEN }}"
           "token length: $($t.Length)"
-          "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          "exit code: $LASTEXITCODE"
+          "--- docker version ---"
+          docker version --format '{{.Client.Version}} / {{.Server.Version}}'
+          "--- curl basic auth ---"
+          curl.exe -s -u "SFRussel:$t" -o NUL -w "status: %{http_code}`n" https://ghcr.io/v2/
+          "--- docker login -p ---"
+          docker login ghcr.io -u "SFRussel" -p "$t"
+          "exit: $LASTEXITCODE"
+          "--- docker login stdin ---"
+          $t | docker login ghcr.io -u "SFRussel" --password-stdin
+          "exit: $LASTEXITCODE"
